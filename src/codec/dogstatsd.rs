@@ -20,7 +20,7 @@ pub struct DogStatsD {}
 
 impl Codec for DogStatsD {
     fn name(&self) -> &str {
-        "statsd"
+        "dogstatsd"
     }
 
     fn decode<'input>(
@@ -70,22 +70,19 @@ fn encode(value: &Value) -> Result<Vec<u8>> {
         }
     }
 
-    if let Some(tags) = value.get("tags") {
+    if let Some(tags) = value.get_array("tags") {
         if tags.is_array() {
             r.push_str("|#");
-            r.push_str(&tags.join(",").encode());
+            let t = tags.join(",");
+            r.push_str(&t.encode());
         } else {
             return Err(ErrorKind::InvalidDogStatsD.into());
         }
     }
 
-    if let Some(container_id) = value.get("container_id") {
-        if container_id.is_string() {
-            r.push_str("|c:");
-            r.push_str(&container_id.encode());
-        } else {
-            return Err(ErrorKind::InvalidDogStatsD.into());
-        }
+    if let Some(container_id) = value.get_str("container_id") {
+        r.push_str("|c:");
+        r.push_str(&container_id.encode());
     }
 
     Ok(r.as_bytes().to_vec())
@@ -177,12 +174,12 @@ fn decode(data: &[u8], _ingest_ns: u64) -> Result<Value> {
                 m.insert("sample_rate".into(), Value::from(v));
             } else if let Some((tags_start, b'#')) = d.next() {
                 let s = substr(data, tags_start + 2..)?;
-                let v: Vec<&str> = s.split(",").parse()?;
+                let v: Vec<&str> = s.parse()?.split(",");
                 m.insert("tags".into(), Value::from(v));
             } else if let Some((container_id_start, b'c')) = d.next() {
                 let s = substr(data, container_id_start + 2..)?;
-                let v: str = s.parse()?;
-                m.insert("tags".into(), Value::from(v));
+                let v = str::from_utf8(s)?;
+                m.insert("container_id".into(), Value::from(v));
 
             } else {
                 return Err(invalid());
